@@ -1,0 +1,951 @@
+openapi: 3.0.3
+info:
+  title: API для социальной сети
+  version: 1.0.0
+  description: |-
+    API предназначается для социальной сети для путешественников. Позволяет пользователям публиковать посты, добавлять фотографии, оставлять комментарии, реагировать на публикации, подписываться на других пользователей и просматривать популярные места.
+  contact:
+    email: poltora.dev@gmail.com
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: https://social-network-for-travellers.ru/api/v1
+paths:
+  /posts:
+    post:
+      tags:
+        - posts
+      summary: Создание поста
+      description: Метод используется для создания поста 
+      security:
+        - BearerAuth: []
+      requestBody:
+        description: Объект для создания поста
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Post'
+      responses:
+        '201':
+          description: успешное создание
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Неверные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при создании поста
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - posts
+      summary: Получение списка постов
+      description: Метод позволяет получить список постов. В текущей архитектуре посты могут фильтроваться по геолокации (lat, lon, radius), по user_id (для получения постов конкретного кастомера)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: feed_type
+          in: query
+          required: true
+          description: |
+            Определяет, какие посты получает пользователь:
+            - `public` – посты от пользователей, на которых подписан текущий пользователь (лента).
+            - `private` – только посты текущего пользователя (личный кабинет).
+            - `popular` – популярные посты. Cортируются по количеству реакций (`reactions`), но могут фильтроваться по комментариям (`comments_count`).
+          schema:
+            type: string
+            enum: [public, private, popular]
+        - name: sort_by
+          in: query
+          description: "Критерий сортировки для популярных постов"
+          required: false
+          schema:
+            type: string
+            enum: [reactions, comments]
+            example: reactions
+        - name: location_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        - name: radius
+          in: query
+          description: Радиус поиска
+          required: false
+          schema:
+            type: number
+            format: int32
+            maximum: 10
+            example: 5
+        - name: page
+          in: query
+          description: Страница пагинации (1 по-умолчанию)
+          required: false
+          schema:
+            type: number
+            format: int32
+        - name: limit
+          in: query
+          description: Лимит постов на страницу (10 по-умолчанию)
+          required: false
+          schema:
+            type: number
+            format: int32
+      responses:
+        '200':
+          description: Массив постов успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/Status'
+                  posts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GetPost'
+                  page:
+                    type: number
+                    format: int32
+                  limit:
+                    type: number
+                    format: int32
+        '400':
+          description: Некорретный данные в запросе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Посты по заданным фильтрам не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке получить список постов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /posts/media:
+    post:
+      tags:
+        - posts
+      summary: Загрузка одной фотографии для поста
+      description: Метод используется для загрузки одной фотографий в CDN. Сейчас на не важен порядок изображений, но хочется оставить возможность учитывать порядок загруженных фотографий в будущем; подход с загрузкой одного изображения проще масштабируется
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: изображение успешно загружено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/Status'
+                  response:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        example: "https://cdn.example.com/uploads/image1.jpg"
+                      id:
+                        type: string
+                        format: uuid
+                        example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        '500':
+          description: Ошибка при загрузке фотографии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /posts/{postId}:
+    get:
+      tags:
+        - posts
+      summary: Получение поста
+      description: Метод позволяет получить все данные по одному посту. Архитектура приложения работает устроена так, что реакции приходят вместе с постом и их количество ограничено 5-ю реакциями на пост.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          description: ID поста, который нужно обновить
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Пост успешно возвращен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPost'
+        '404':
+          description: Пост не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке получить пост
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - posts
+      summary: Редактирование поста
+      description: Метод позволяет отредактировать пост.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          description: id of post to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Объект для обновления поста
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostUpdate'
+      responses:
+        '200':
+          description: пост успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Неверные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при обновлении поста
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - posts
+      summary: Частичное обновление поста
+      description: Метод позволяет обновить только часть данных поста, например, описание.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Объект с изменяемыми полями
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostUpdate'
+      responses:
+        '200':
+          description: Пост успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Некорректные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - posts
+      summary: Удаление поста
+      description: Метод позволяет пользователю удалить свой пост.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Пост удален
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '403':
+          description: Доступ запрещен (пост не принадлежит пользователю)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Пост не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке получить список реакций
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /posts/{postId}/comments:
+    get:
+      tags:
+        - comments
+      summary: Получение списка комментариев для поста
+      description: Метод позволяет получить список комментариев для поста.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          description: id поста, для которого загружаются комментарии
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        - name: page
+          in: query
+          description: Страница пагинации (1 по-умолчанию)
+          required: false
+          schema:
+            type: number
+            format: int32
+        - name: limit
+          in: query
+          description: Лимит комментариев на страницу (10 по-умолчанию)
+          required: false
+          schema:
+            type: number
+            format: int32
+      responses:
+        '200':
+          description: Массив комментариев успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/Status'
+                  comments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+                  page:
+                    type: number
+                    format: int32
+                  limit:
+                    type: number
+                    format: int32
+        '400':
+          description: Некорретный данные в запросе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Комментарии не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке получить список комментариев
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - comments
+      summary: Добавление нового комментария
+      description: Метод используется для добавления нового комментария к посту
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          description: id поста, для которого загружаются комментарии
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Comment'
+      responses:
+        '200':
+          description: комментарий успешно добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Неверные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке добавить комментарий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /posts/{postId}/reactions:
+    post:
+      tags:
+        - reactions
+      summary: Добавление реакции на пост
+      description: Метод используется для добавления реакции на пост от определенного пользователя
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          description: id поста, для которого загружаются комментарии
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reaction_id:
+                  type: string
+                  format: uuid
+                  example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+                  description: "ID доступной реакции из /reactions. Пользователь не может создать новый `reaction_id`, только выбрать существующий."
+      responses:
+        '200':
+          description: реакция успешно добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Неверные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке добавить реакцию
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - reactions
+      summary: Удаление реакции с поста
+      description: Метод позволяет пользователю удалить свою реакцию с поста.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: reaction_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Реакция удалена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '404':
+          description: Реакция не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /reactions:
+    get:
+      tags:
+        - reactions
+      summary: Загрузка доступных реакций (список реакций ограничен, новые добавлять нельзя)
+      description: Метод используется для загрузки доступных реакций. Реакции хранятся на сервере, клиент выбирает их в отдельном виджете, по-аналогии как это работает в telegram.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Массив реакций успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/Status'
+                  reactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reaction'
+                  page:
+                    type: number
+                    format: int32
+                  limit:
+                    type: number
+                    format: int32
+        '400':
+          description: Некорректные данные в запросе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке получить список реакций
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/subscriptions:
+    post:
+      tags:
+        - subscriptions
+      summary: Создание новой подписки
+      description: Метод используется для создания новой подписки одного пользователя на другого
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Subscription'
+      responses:
+        '200':
+          description: подписка успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Неверные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке создать подписку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - subscriptions
+      summary: Получение списка подписок
+      description: Метод позволяет получить список всех подписок для пользователя.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Страница пагинации (1 по-умолчанию)
+          required: false
+          schema:
+            type: number
+            format: int32
+        - name: limit
+          in: query
+          description: Лимит подписок на страницу (10 по-умолчанию)
+          required: false
+          schema:
+            type: number
+            format: int32
+      responses:
+        '200':
+          description: Массив подписок успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/Status'
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subscription'
+                  page:
+                    type: number
+                    format: int32
+                  limit:
+                    type: number
+                    format: int32
+        '400':
+          description: Некорретные данные в запросе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Подписки не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке получить список подписок
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/subscriptions/{relatedUserId}:
+    delete:
+      tags:
+        - subscriptions
+      summary: Удаление подписки
+      description: Метод используется для отписки пользователя от другого пользователя
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: relatedUserId
+          in: path
+          description: id of related user
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: подписка удалена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Неверные входные данные
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Подписка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке удалить подписку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /locations:
+    get:
+      tags:
+        - locations
+      summary: Получение списка локаций по введенному паттерну
+      description: Метод используется на странице поиска для получения списка существующих локаций по введенному пользователем паттерну.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pattern
+          in: query
+          required: true
+          schema:
+            type: string
+            format: text
+          example: "Москва"
+      responses:
+        '200':
+          description: Массив постов успешно получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/Status'
+                  locations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Location'
+                  page:
+                    type: number
+                    format: int32
+                  limit:
+                    type: number
+                    format: int32
+        '400':
+          description: Некорректные данные в запросе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Локации по заданному паттерну не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка при попытке получить список локаций
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        description:
+          type: string
+          format: text
+          example: "lorem ipsum ..."
+          maxLength: 500
+        geo:
+          $ref: "#/components/schemas/Geo"
+        user_id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        created_at:
+          type: string
+          format: date-time
+          example: "2017-07-21T17:32:28Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2017-07-21T17:32:28Z"
+        photos_urls:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+              url:
+                type: string
+                example: "https://someurl.ru/photo1.png"
+          minItems: 1
+          maxItems: 5
+    PostUpdate:
+      type: object
+      properties:
+        description:
+          type: string
+          format: text
+          example: "Обновленное описание поста"
+          maxLength: 500
+        photos_urls:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+              url:
+                type: string
+                example: "https://someurl.ru/photo1.png"
+          minItems: 1
+          maxItems: 5
+    GetPost:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        response:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Post'
+            - type: object
+              properties:
+                reactions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Reaction'
+    Location:
+      type: object
+      properties:
+        label:
+          type: string
+          format: text
+          example: "New-York"
+        id:
+          type: string
+          format: text
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+    Geo:
+      type: object
+      properties:
+        label:
+          type: string
+          format: text
+          example: "New-York"
+        lat:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          example: 41.40338
+        lon:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          example: 41.40338
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        post_id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        text:
+          type: string
+          format: text
+          example: "lorem ipsum ..."
+          maxLength: 250
+        user_id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        created_at:
+          type: string
+          format: date-time
+          example: "2017-07-21T17:32:28Z"
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        user_id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        related_user_id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        created_at:
+          type: string
+          format: date-time
+          example: "2017-07-21T17:32:28Z"
+    Reaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        emoji:
+          type: string
+          example: "🔥"
+        counter:
+          type: number
+          format: int32
+    Error:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        error_code:
+          type: string
+          enum:
+            - invalid_user
+            - access_denied
+            - not_found
+            - server_error
+        error:
+          type: string
+          example: "invalid user_id"
+          description: Сообщение с ошибкой
+    Success:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+    Status:
+      type: string
+      enum: [success, error]
+      description: Статус ответа
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
