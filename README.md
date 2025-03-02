@@ -199,3 +199,99 @@ rps * avg_request_size
 	- related_user_id (36)
 	- created_at (19)
 - **Traffic (write)** = 34 RPS * ~140 B = 4760 B/s = ~4.7 kb/s
+
+#### Оценка дисков
+```
+Disks_for_capacity = capacity / disk_capacity
+Disks_for_throughput = traffic_per_second / disk_throughput
+Disks_for_iops = iops / disk_iops
+DIsks = max(ceil(Disks_for_capicity), ceil(Disks_for_throughput), ceil(Disks_for_iops))
+```
+##### Посты (мета-информация)
+capacity (на год) = 8 Kb/s (traffic на запись) * 864000 * 365 = 8Kb/s * 100.000 * 400 = 40.000.000 * 8 = 320.000.000Kb = 320GB
+capacity_with_reverse = 320Gb + 20% = 384Gb
+
+**HDD by 20Tb:**
+Disks_for_capacity = capacity / disk_capacity = 384GB / 20Tb = 1
+Disks_for_throughput = 965Kb/s = ~1mb (суммарный траффик в секунду) / 100Mb/s (средняя пропусная способность) = 0.01 = 1 
+Disks_for_iops = 1417 (суммарное количество запросов в секунду) / 100 (среднее количество io в секунду) = 14.1 = 15
+Disks = max(1, 1, 15) = 15
+
+**SSD by 20Tb:**
+Disks_for_capacity = capacity / disk_capacity = 384GB / 20Tb = 1
+Disks_for_throughput = 1Mb (суммарное количество запросов в секунду) / 1000 (средняя пропусная способность) = 0.001 = 1 
+Disks_for_iops = 1417 (суммарное количество запросов в секунду) / 500 (среднее количество io в секунду) = 2.8 = 3 
+Disks = max(1, 1, 3) = 3 
+
+**Решение**: горячие данны будем хранить на SSD, остальные - на HDD. 1 SSD + 12 HDD.
+##### Медиа
+capacity (на год) = 23 Mb/s (traffic на запись) * 864000 * 365 = 726.000.000MB = ~ 726Tb
+capacity_with_reverse = 726Tb + 20% = 900Tb
+
+**HDD by 20Tb:**
+Disks_for_capacity = capacity / disk_capacity = 900Tb / 20Tb = 45
+Disks_for_throughput = 2.2Gb (суммарное количество траффика в секунду) / 100Mb/s (средняя пропусная способность) = 2.2Gb * 1024 / 100Mb/s = 2253Mb / 100Mb/s = 22.5 = 23
+Disks_for_iops = 1417 (суммарное количество запросов в секунду) / 100 (среднее количество io в секунду) = 14.1 = 15
+Disks = max(45, 23, 15) = 45
+
+**SSD by 50Tb:**
+Disks_for_capacity = capacity / disk_capacity = 900Tb / 50Tb = 18
+Disks_for_throughput = 2.2Gb (суммарное количество траффика в секунду) * 1024 / 1000Mb/s (средняя пропусная способность) = 2.2 = 3 
+Disks_for_iops = 1417 (суммарное количество запросов в секунду) / 500 (среднее количество io в секунду) = 2.8 = 3
+Disks = max(18, 3, 3) = 18 
+
+**Решение**: горячие данны будем хранить на SSD, остальные - на HDD. 4 SSD + 36 HDD.
+
+##### Комментарии
+capacity (на год) = 29 Kb/s (traffic на запись) * 864000 * 365 = 915.000.000Kb = ~ 915Gb
+capacity_with_reverse = 1.1Tb
+
+**HDD by 20Tb:**
+Disks_for_capacity = capacity / disk_capacity = 1.1Tb / 20Tb = 1
+Disks_for_throughput = 1Mb/s (суммарное количество траффика в секунду) / 100Mb/s (средняя пропусная способность) = 0.01 = 1
+Disks_for_iops = 4300 (суммарное количество запросов в секунду) / 100 (среднее количество io в секунду) = 43
+Disks = max(1, 1, 43) = 43
+
+**SSD by 50Tb:**
+Disks_for_capacity = capacity / disk_capacity = 1.1Tb / 50Tb = 1
+Disks_for_throughput = 1Mb/s (суммарное количество траффика в секунду) / 1000Mb/s (средняя пропусная способность) = 0.001 = 1
+Disks_for_iops = 4300 (суммарное количество запросов в секунду) / 500 (среднее количество io в секунду) = 8.6 = 9
+Disks = max(1, 1, 9) = 9
+
+**Решение**: горячие данны будем хранить на SSD, остальные - на HDD. 2 SSD + 35 HDD
+
+
+##### Реакции
+capacity (на год) = 77 Kb/s (traffic на запись) * 864000 * 365 = 2.500.000.000Kb = 2.5Tb 
+capacity_with_reverse = 2.9Tb
+
+**HDD by 20Tb:**
+Disks_for_capacity = capacity / disk_capacity = 2.9Tb / 20Tb = 1
+Disks_for_throughput = 77Kb/s (суммарное количество траффика в секунду) / 100Mb/s (средняя пропусная способность) = 0.0008Kb = 1
+Disks_for_iops = 587 (суммарное количество запросов в секунду) / 100 (среднее количество io в секунду) = 5.8 = 6
+Disks = max(1, 1, 6) = 6
+
+**SSD by 50Tb:**
+Disks_for_capacity = capacity / disk_capacity = 2.9Tb / 50Tb = 1
+Disks_for_throughput = 77Kb/s (суммарное количество траффика в секунду) / 1000Mb/s (средняя пропусная способность) = 0.00008 = 1
+Disks_for_iops = 587 (суммарное количество запросов в секунду) / 500 (среднее количество io в секунду) = 2
+Disks = max(1, 1, 2) = 9
+
+**Решение**: горячие данны будем хранить на SSD, остальные - на HDD. 1 SSD + 5 HDD
+
+##### Подписки
+capacity (на год) = 4.7 Kb/s (traffic на запись) * 86400 * 365 = 149.000.000 Kb = 149Gb
+capacity_with_reverse = 170Gb
+
+**HDD by 20Tb:**
+Disks_for_capacity = capacity / disk_capacity = 170Gb / 20Tb = 1
+Disks_for_throughput = 4.7Kb/s (суммарное количество траффика в секунду) / 100Mb/s (средняя пропусная способность) = 0.00005Kb = 1
+Disks_for_iops = 34 (суммарное количество запросов в секунду) / 100 (среднее количество io в секунду) = 0.34 = 1
+Disks = max(1, 1, 1) = 1
+
+**SSD by 50Tb:**
+Disks_for_capacity = 1
+Disks_for_throughput = 1
+Disks_for_iops = 1
+
+**Решение**: 1 HDD
