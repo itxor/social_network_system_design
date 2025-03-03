@@ -25,7 +25,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Post'
+              $ref: '#/components/schemas/PostCreateUpdate'
       responses:
         '201':
           description: успешное создание
@@ -139,50 +139,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /posts/media:
-    post:
-      tags:
-        - posts
-      summary: Загрузка одной фотографии для поста
-      description: Метод используется для загрузки одной фотографий в CDN. Сейчас на не важен порядок изображений, но хочется оставить возможность учитывать порядок загруженных фотографий в будущем; подход с загрузкой одного изображения проще масштабируется
-      security:
-        - BearerAuth: []
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-      responses:
-        '200':
-          description: изображение успешно загружено
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    $ref: '#/components/schemas/Status'
-                  response:
-                    type: object
-                    properties:
-                      url:
-                        type: string
-                        format: uri
-                        example: "https://cdn.example.com/uploads/image1.jpg"
-                      id:
-                        type: string
-                        format: uuid
-                        example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
-        '500':
-          description: Ошибка при загрузке фотографии
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+
   /posts/{postId}:
     get:
       tags:
@@ -238,7 +195,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PostUpdate'
+              $ref: '#/components/schemas/PostCreateUpdate'
       responses:
         '200':
           description: пост успешно обновлен
@@ -277,7 +234,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PostUpdate'
+              $ref: '#/components/schemas/PostCreateUpdate'
       responses:
         '200':
           description: Пост успешно обновлен
@@ -525,6 +482,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /media:
+    post:
+      tags:
+        - posts
+      summary: Загрузка одного файла
+      description: Метод используется для загрузки одного файла в CDN.
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: файл успешно загружен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: '#/components/schemas/Status'
+                  response:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        example: "https://cdn.example.com/uploads/image1.jpg"
+                      id:
+                        type: string
+                        format: uuid
+                        example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
+        '500':
+          description: Ошибка при загрузке файла
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
   /reactions:
     get:
       tags:
@@ -729,7 +732,7 @@ paths:
                   locations:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Location'
+                      $ref: '#/components/schemas/Geo'
                   page:
                     type: number
                     format: int32
@@ -796,7 +799,7 @@ components:
                 example: "https://someurl.ru/photo1.png"
           minItems: 1
           maxItems: 5
-    PostUpdate:
+    PostCreateUpdate:
       type: object
       properties:
         description:
@@ -804,6 +807,8 @@ components:
           format: text
           example: "Обновленное описание поста"
           maxLength: 500
+        geo:
+          $ref: "#/components/schemas/Geo"
         photos_urls:
           type: array
           items:
@@ -833,36 +838,31 @@ components:
                   type: array
                   items:
                     $ref: '#/components/schemas/Reaction'
-    Location:
-      type: object
-      properties:
-        label:
-          type: string
-          format: text
-          example: "New-York"
-        id:
-          type: string
-          format: text
-          example: "50cd76c4-1c65-4415-bff4-e77c6e3474da"
     Geo:
       type: object
       properties:
-        label:
+        location_name:
           type: string
-          format: text
+          nullable: true
           example: "New-York"
+        location_id:
+          type: string
+          format: uuid
+          nullable: true
         lat:
           type: number
           format: float
           minimum: -90
           maximum: 90
           example: 41.40338
+          nullable: true
         lon:
           type: number
           format: float
           minimum: -90
           maximum: 90
           example: 41.40338
+          nullable: true
     Comment:
       type: object
       properties:
